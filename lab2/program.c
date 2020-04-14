@@ -11,7 +11,7 @@
 #define UZMIBITOVE(broj,prvi,bitova) 	( ( broj >> (64-(prvi)) ) & MASKA(bitova) )
 
 uint64_t MS[10], ULAZ = 0, IZLAZ = 0, BROJAC = 0;
-uint64_t velicina;
+uint64_t velicina = 1;
 
 int brojDretvi = 3;
 int broj[6], ulaz[6];
@@ -47,7 +47,6 @@ uint64_t uzmi_iz_MS()
 void udi_u_KO (int id)
 {
 	int i, j, max = 0;
-	printf("id usao u KO\n");
 	for (i = 0; i < brojDretvi * 2; i++)
 		if (broj[i] > max)
 			max = broj[i];
@@ -65,7 +64,6 @@ void udi_u_KO (int id)
 
 void izadi_iz_KO (int id)
 {
-	printf("id izasao iz KO\n");
 	broj[id] = 0;
 }
 
@@ -96,7 +94,8 @@ uint64_t zbrckanost (uint64_t x)
 	return z;
 }
 
-uint64_t generiraj_dobar_broj()
+uint64_t generiraj_dobar_broj(struct gmp_pomocno *p)
+
 {
 	uint64_t najbolji_broj = 0, i, broj, z;
 	uint64_t najbolja_zbrckanost = 0;
@@ -104,7 +103,7 @@ uint64_t generiraj_dobar_broj()
 		
 	for (i = 0; i < velicina; i++)
 	{
-		broj = daj_novi_slucajan_prosti_broj (&p);
+		broj = daj_novi_slucajan_prosti_broj (p);
 		z = zbrckanost (broj);
 		if (z > najbolja_zbrckanost)
 		{
@@ -122,7 +121,6 @@ uint64_t procjeni_velicinu_grupe()
 	uint64_t SEKUNDI = 10;
 	time_t t = time(NULL);
 	uint64_t k = 0;
-	uint64_t velicina_grupe = 1;
 	uint64_t i, broj, brojeva_u_sekundi;
 
 	while (time(NULL) < (t + SEKUNDI) )
@@ -130,15 +128,18 @@ uint64_t procjeni_velicinu_grupe()
 		k++;
 		for (i = 0; i < M; i++)
 		{
-			broj = generiraj_dobar_broj();
+			broj = generiraj_dobar_broj(&p);
 			stavi_u_MS(broj);
 		}
 	}
 
 	brojeva_u_sekundi = (k * M / SEKUNDI);
-	velicina_grupe = brojeva_u_sekundi / 2.5;
+	velicina = brojeva_u_sekundi / 2.5;
+	
+	while (BROJAC)
+		uzmi_iz_MS();
 
-	return velicina_grupe;
+	return velicina;
 
 }
 
@@ -147,24 +148,24 @@ void *radnaDretva (void *id)
 	
 	int *d = id;
 	uint64_t x;
-	struct gmp_pomocno p;
-	printf("usao u radnu %d\n", *d);
-	inicijaliziraj_generator (&p, *d);
-	printf("inicijalizirao gen u dretvi %d\n", *d);
+	struct gmp_pomocno r;
+
+	inicijaliziraj_generator (&r, *d);
+
 	while( kraj != 1 )
 	{
-		x = generiraj_dobar_broj(&p);
+		x = generiraj_dobar_broj(&r);
 
 		udi_u_KO(*d);
 
 		stavi_u_MS(x);
 		
-		printf("dretva %d stavlja u spremnik %lx \n", *d, x);
+		printf("Dretva %d je stavila broj %lx u spremnik. \n", *d, x);
 
 		izadi_iz_KO(*d);
 	}
-	printf("izasao iz while u dretvi %d\n", *d);
-	obrisi_generator (&p);
+
+	obrisi_generator (&r);
 
 	return NULL;
 }
@@ -181,7 +182,7 @@ void *neradnaDretva(void *id)
 		udi_u_KO(*d);
 
 		y = uzmi_iz_MS();
-		printf("dretva %d uzima iz spremnika %lx \n", *d, y);
+		printf("Dretva %d je uzela broj %lx iz spremnika.\n", *d, y);
 
 		izadi_iz_KO(*d);
 	}
