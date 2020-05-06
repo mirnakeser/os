@@ -4,7 +4,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <semaphore.h>
 
 #include "slucajni_prosti_broj.h"
 
@@ -21,7 +20,10 @@ int kraj = 0;
 
 struct gmp_pomocno p;
 
-sem_t PRAZNI, PUNI, KO;
+pthread_mutex_t m;
+pthread_cond_t red_prazni, red_puni;
+int br_praznih = 10, br_punih = 0;
+
 
 void stavi_u_MS(uint64_t broj)
 {
@@ -128,6 +130,8 @@ uint64_t procjeni_velicinu_grupe()
 
 	brojeva_u_sekundi = (k * M / SEKUNDI);
 	velicina = brojeva_u_sekundi / 2.5;
+	
+	
 
 	return velicina;
 
@@ -147,19 +151,24 @@ void *radnaDretva (void *id)
 		x = generiraj_dobar_broj(&r);
 
 		//udi_u_KO(*d);
-		sem_wait(&PRAZNI);
-		if (kraj == 1)
+		pthread_mutex_lock (&m);
+		while (br_praznih == 0 && kraj != 1)
+			pthread_cond_wait(&red_prazni, &m);
+		if ( kraj == 1)
+		{
+			pthread_mutex_unlock(&m);
 			break;
+		}
 			
-		sem_wait(&KO);
-
 
 		stavi_u_MS(x);
 		printf("Dretva %d je stavila broj %lx u spremnik. \n", *d, x);
 
 		//izadi_iz_KO(*d);
-		sem_post(&KO);
-		sem_post(&PUNI);
+		br_punih++;
+		br_praznih--;
+		pthread_cond_signal(&red_puni);
+		pthread_mutex_unlock(&m);
 	}
 
 	obrisi_generator (&r);
@@ -177,18 +186,23 @@ void *neradnaDretva(void *id)
 		sleep(3);
 
 		//udi_u_KO(*d);
-		sem_wait(&PUNI);
-		if (kraj == 1)
+		pthread_mutex_lock (&m);
+		while (br_punih == 0 && kraj != 1)
+			pthread_cond_wait(&red_puni, &m);
+		if ( kraj == 1)
+		{
+			pthread_mutex_unlock(&m);
 			break;
-
-		sem_wait(&KO);
+		}
 
 		y = uzmi_iz_MS();
 		printf("Dretva %d je uzela broj %lx iz spremnika.\n", *d, y);
 
 		//izadi_iz_KO(*d);
-		sem_post(&KO);
-		sem_post(&PRAZNI);
+		br_praznih++;
+		br_punih--;
+		pthread_cond_signal(&red_prazni);
+		pthread_mutex_unlock(&m);
 	}
 	
 	return NULL;
@@ -206,9 +220,9 @@ int main(int argc, char *argv[])
 
 	velicina = procjeni_velicinu_grupe();
 
-	sem_init (&PUNI, 0, 0);
-	sem_init (&PRAZNI, 0, 10);
-	sem_init (&KO, 0, 1);
+	pthread_mutex_init (&m, NULL);
+	pthread_cond_init (&red_puni, NULL);
+	pthread_cond_init (&red_prazni, NULL);
 
 	for (i = 0; i < brojDretvi * 2; i++)
 	{
@@ -246,11 +260,11 @@ int main(int argc, char *argv[])
 
 	kraj = 1;
 
-	for (i = 0; i < brojDretvi; ++i)
-	{
-		sem_post(&PUNI);
-		sem_post(&PRAZNI);
-	}
+	
+	pthread_cond_broadcast(&red_puni);
+		
+	pthread_cond_broadcast(&red_prazni);
+
 
 	for (j = 0; j < brojDretvi; j++)
 		pthread_join(t1[j], NULL);
@@ -260,9 +274,9 @@ int main(int argc, char *argv[])
 
 	obrisi_generator (&p);
 
-	sem_destroy(&PUNI);
-	sem_destroy(&PRAZNI);
-	sem_destroy(&KO);
+	pthread_mutex_destroy (&m);
+	pthread_cond_destroy(&red_puni);
+	pthread_cond_destroy(&red_prazni);
 
 	return 0;
 }
